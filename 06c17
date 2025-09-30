@@ -1,0 +1,36 @@
+#define LED 7
+
+int period_us = 100;
+int duty_percent = 50;
+
+void set_period(int period) {
+  period_us = period;
+}
+
+void set_duty(int duty) {
+  duty_percent = duty;
+}
+
+void pwm_write() {
+  int on_time = period_us * duty_percent / 100;
+  int off_time = period_us - on_time;
+  digitalWrite(LED, HIGH);
+  delayMicroseconds(on_time);
+  digitalWrite(LED, LOW);
+  delayMicroseconds(off_time);
+}
+
+void setup() {
+  pinMode(LED, OUTPUT);
+}
+
+void loop() {
+  for (int d = 0; d <= 100; d++) {
+    set_duty(d);
+    for (int i = 0; i < 10; i++) pwm_write();
+  }
+  for (int d = 100; d >= 0; d--) {
+    set_duty(d);
+    for (int i = 0; i < 10; i++) pwm_write();
+  }
+}
