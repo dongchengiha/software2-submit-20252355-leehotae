@@ -1,0 +1,113 @@
+#include <Servo.h>
+
+#define PIN_TRIG  12
+#define PIN_ECHO  13
+#define PIN_SERVO 10
+
+#define SND_VEL 346.0
+#define PULSE_US 10
+#define TIMEOUT 20000UL
+#define SCALE (0.001 * 0.5 * SND_VEL)
+
+#define DIST_MIN 100.0
+#define DIST_MAX 300.0
+
+#define ANGLE_DOWN 0
+#define ANGLE_UP   90
+#define MOVE_TIME  3000UL 
+
+#define ENTER_TH 200.0
+#define EXIT_TH  220.0
+
+Servo servoGate;
+bool carDetected = false;
+
+unsigned long moveStart = 0;
+bool moving = false;
+int angleStart = ANGLE_DOWN;
+int angleTarget = ANGLE_DOWN;
+
+int modeEase = 1; 
+
+float getDistanceMM() {
+  digitalWrite(PIN_TRIG, LOW);  delayMicroseconds(2);
+  digitalWrite(PIN_TRIG, HIGH); delayMicroseconds(PULSE_US);
+  digitalWrite(PIN_TRIG, LOW);
+  unsigned long duration = pulseIn(PIN_ECHO, HIGH, TIMEOUT);
+  return (float)duration * SCALE;
+}
+
+float easeSigmoid(float t) {
+  const float k = 10.0f;
+  auto L = [&](float x){ return 1.0f / (1.0f + expf(-k*(x - 0.5f))); };
+  float y0 = L(0.0f), y1 = L(1.0f);
+  return (L(t) - y0) / (y1 - y0);
+}
+
+float easeCosine(float t) {
+  return 0.5f - 0.5f * cosf(PI * t);
+}
+
+float ease(float t) {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return (modeEase == 1) ? easeSigmoid(t) : easeCosine(t);
+}
+
+void beginMotion(int targetAngle) {
+  moving = true;
+  moveStart = millis();
+  angleStart = servoGate.read();
+  angleTarget = targetAngle;
+}
+
+void setup() {
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
+  Serial.begin(57600);
+  servoGate.attach(PIN_SERVO);
+  servoGate.write(ANGLE_DOWN);
+  Serial.println("Parking Gate (1=Sigmoid, 2=Cosine)");
+}
+
+void loop() {
+  float dist = getDistanceMM();
+  if (dist <= 0 || dist > DIST_MAX) dist = DIST_MAX + 10;
+
+  bool prev = carDetected;
+  if (!carDetected && dist <= ENTER_TH) carDetected = true;
+  if ( carDetected && dist >= EXIT_TH ) carDetected = false;
+
+  if (carDetected != prev) {
+    beginMotion(carDetected ? ANGLE_UP : ANGLE_DOWN);
+    Serial.println(carDetected ? "Car → OPEN" : "Car → CLOSE");
+  }
+
+  if (moving) {
+    unsigned long elapsed = millis() - moveStart;
+    if (elapsed <= MOVE_TIME) {
+      float t = (float)elapsed / (float)MOVE_TIME;
+      float u = ease(t);
+      int angle = (int)round(angleStart + (angleTarget - angleStart) * u);
+      servoGate.write(angle);
+    } else {
+      servoGate.write(angleTarget);
+      moving = false;
+    }
+  }
+
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == '1' || c == '2') {
+      modeEase = (c == '1') ? 1 : 2;
+      Serial.println(c == '1' ? "Mode: Sigmoid" : "Mode: Cosine");
+    }
+  }
+
+  Serial.print("Dist(mm)="); Serial.print(dist);
+  Serial.print(" | State="); Serial.print(carDetected ? "ON" : "OFF");
+  Serial.print(" | Angle="); Serial.print(servoGate.read());
+  Serial.print(" | Easing="); Serial.println(modeEase==1 ? "SIG" : "COS");
+
+  delay(50);
+}
