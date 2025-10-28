@@ -1,0 +1,34 @@
+#include <Servo.h>
+#define PIN_SERVO 10
+#define SERVO_MIN_US 665
+#define SERVO_MAX_US 2600
+
+Servo sv;
+int degToUs(float d){ if(d<0)d=0; if(d>180)d=180;
+  return SERVO_MIN_US + (int)((SERVO_MAX_US-SERVO_MIN_US)*(d/180.0));
+}
+
+
+void moveUniform(float fromDeg, float toDeg, float speedDegPerSec, float stepDeg=0.2){
+  if(speedDegPerSec<=0 || stepDeg<=0) return;
+  int dir = (toDeg>=fromDeg)? 1 : -1;
+  unsigned long waitMs = (unsigned long)(1000.0 * (stepDeg / speedDegPerSec));
+  float a = fromDeg;
+  while( (dir>0 && a<toDeg) || (dir<0 && a>toDeg) ){
+    sv.writeMicroseconds(degToUs(a));
+    delay(waitMs);
+    a += dir*stepDeg;
+  }
+  sv.writeMicroseconds(degToUs(toDeg));
+}
+
+void setup(){
+  sv.attach(PIN_SERVO, SERVO_MIN_US, SERVO_MAX_US);
+  delay(500);
+
+
+   moveUniform(0, 180, 3.0, 0.2);
+
+   moveUniform(45, 135, 0.3, 0.2);
+}
+void loop(){}
